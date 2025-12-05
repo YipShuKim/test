@@ -61,24 +61,47 @@
             text-align: center;
             transition: opacity 0.5s ease;
         }
-        .upload-btn {
+        
+        /* 按钮容器 - 包含上传和全屏按钮 */
+        .buttons-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+            transition: opacity 0.5s ease;
+            pointer-events: auto;
+        }
+        
+        .btn-row {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .custom-btn {
             background: rgba(20, 20, 20, 0.6); 
             border: 1px solid rgba(212, 175, 55, 0.4); 
             color: #d4af37; 
-            padding: 10px 25px; 
+            padding: 10px 20px; 
             cursor: pointer; 
             text-transform: uppercase; 
-            letter-spacing: 3px; 
+            letter-spacing: 2px; 
             font-size: 10px;
             transition: all 0.4s;
             display: inline-block;
             backdrop-filter: blur(5px);
+            min-width: 120px;
+            text-align: center;
+            font-family: 'Times New Roman', serif;
         }
-        .upload-btn:hover { 
+        
+        .custom-btn:hover { 
             background: #d4af37; 
             color: #000; 
             box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
         }
+        
         .hint-text {
             color: rgba(212, 175, 55, 0.5);
             font-size: 9px;
@@ -96,6 +119,21 @@
             border: 1px solid rgba(255,255,255,0.1);
             overflow: hidden; opacity: 0;
             pointer-events: none;
+        }
+        
+        /* 全屏图标样式 */
+        .fullscreen-icon {
+            display: inline-block;
+            margin-right: 5px;
+            font-size: 12px;
+        }
+        
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            h1 { font-size: 36px; letter-spacing: 4px; }
+            .buttons-container { gap: 10px; }
+            .btn-row { flex-direction: column; gap: 10px; }
+            .custom-btn { padding: 8px 15px; min-width: 140px; }
         }
     </style>
     
@@ -125,11 +163,16 @@
     <div id="ui-layer">
         <h1>Merry Christmas</h1>
         
-        <div class="upload-wrapper">
-            <label class="upload-btn">
-                Add Memories
-                <input type="file" id="file-input" multiple accept="image/*">
-            </label>
+        <div class="buttons-container">
+            <div class="btn-row">
+                <label class="custom-btn">
+                    <span class="fullscreen-icon">📷</span> Add Memories
+                    <input type="file" id="file-input" multiple accept="image/*">
+                </label>
+                <button id="fullscreen-btn" class="custom-btn">
+                    <span class="fullscreen-icon">⛶</span> Fullscreen
+                </button>
+            </div>
             <div class="hint-text">Press 'H' or Double-tap to Hide Controls</div>
         </div>
     </div>
@@ -183,6 +226,10 @@
         let photoMeshGroup = new THREE.Group();
         let handLandmarker, video, webcamCanvas, webcamCtx;
         let caneTexture; 
+        
+        // 全屏状态变量
+        let isFullscreen = false;
+        let fullscreenBtn;
 
         async function init() {
             initThree();
@@ -195,6 +242,10 @@
             setupPostProcessing();
             setupEvents();
             await initMediaPipe();
+            
+            // 初始化全屏按钮
+            fullscreenBtn = document.getElementById('fullscreen-btn');
+            setupFullscreen();
             
             const loader = document.getElementById('loader');
             loader.style.opacity = 0;
@@ -473,7 +524,7 @@
             ctx.strokeStyle = '#eebb66'; ctx.lineWidth = 15; ctx.strokeRect(20,20,472,472);
             ctx.font = 'bold 160px Times New Roman'; ctx.fillStyle = '#eebb66';
             ctx.textAlign = 'center'; 
-            ctx.fillText("L❤Y", 256, 300);
+            ctx.fillText("LY", 256, 300);
             
             const tex = new THREE.CanvasTexture(canvas);
             tex.colorSpace = THREE.SRGBColorSpace;
@@ -514,6 +565,71 @@
                 }
                 reader.readAsDataURL(f);
             });
+        }
+
+        // --- 全屏功能 ---
+        function setupFullscreen() {
+            fullscreenBtn.addEventListener('click', toggleFullscreen);
+            
+            // 监听全屏变化
+            document.addEventListener('fullscreenchange', updateFullscreenButton);
+            document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+            document.addEventListener('mozfullscreenchange', updateFullscreenButton);
+            document.addEventListener('MSFullscreenChange', updateFullscreenButton);
+        }
+        
+        function toggleFullscreen() {
+            const elem = document.documentElement;
+            
+            if (!isFullscreen) {
+                // 进入全屏
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) {
+                    elem.mozRequestFullScreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                }
+            } else {
+                // 退出全屏
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+        
+        function updateFullscreenButton() {
+            isFullscreen = !!(
+                document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.mozFullScreenElement ||
+                document.msFullscreenElement
+            );
+            
+            // 更新按钮文本和图标
+            if (fullscreenBtn) {
+                if (isFullscreen) {
+                    fullscreenBtn.innerHTML = '<span class="fullscreen-icon">⛶</span> Exit Fullscreen';
+                } else {
+                    fullscreenBtn.innerHTML = '<span class="fullscreen-icon">⛶</span> Fullscreen';
+                }
+            }
+            
+            // 调整 Three.js 渲染器大小
+            if (renderer) {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                composer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            }
         }
 
         // --- MEDIAPIPE ---
@@ -608,15 +724,23 @@
                     toggleControls();
                 }
             });
+            
+            // 监听 ESC 键退出全屏
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && isFullscreen) {
+                    // ESC 键会自动退出全屏，我们只需要更新按钮状态
+                    setTimeout(updateFullscreenButton, 100);
+                }
+            });
         }
         
         function toggleControls() {
-            const controls = document.querySelector('.upload-wrapper');
+            const buttonsContainer = document.querySelector('.buttons-container');
             const hint = document.querySelector('.hint-text');
-            if (controls) {
-                controls.classList.toggle('ui-hidden');
+            if (buttonsContainer) {
+                buttonsContainer.classList.toggle('ui-hidden');
                 if (hint) {
-                    if (controls.classList.contains('ui-hidden')) {
+                    if (buttonsContainer.classList.contains('ui-hidden')) {
                         hint.textContent = 'Press H or Double-tap to Show Controls';
                     } else {
                         hint.textContent = 'Press H or Double-tap to Hide Controls';
