@@ -929,22 +929,34 @@
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
 
-            // Rotation Logic - 在演示模式下忽略手势控制
-            if (STATE.mode === 'SCATTER' && STATE.hand.detected && !STATE.demoMode) {
+            // Rotation Logic - 修复演示模式下SCATTER模式的旋转问题
+            if (STATE.demoMode) {
+                // 演示模式下的旋转逻辑
+                if (STATE.mode === 'TREE') {
+                    // TREE模式下保持缓慢旋转
+                    STATE.rotation.y += 0.3 * dt;
+                    STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
+                } else if (STATE.mode === 'SCATTER') {
+                    // SCATTER模式下也需要旋转 - 这是修复的关键！
+                    // 在演示模式下，SCATTER模式应该保持缓慢自动旋转
+                    STATE.rotation.y += 0.2 * dt; // 给一个较慢的旋转速度
+                    // X轴旋转稍微慢一些，更自然
+                    STATE.rotation.x += (0 - STATE.rotation.x) * 1.0 * dt;
+                }
+            } else if (STATE.mode === 'SCATTER' && STATE.hand.detected) {
+                // 非演示模式下，SCATTER模式受手势控制
                 const targetRotY = STATE.hand.x * Math.PI * 0.9; 
                 const targetRotX = STATE.hand.y * Math.PI * 0.25;
                 STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
                 STATE.rotation.x += (targetRotX - STATE.rotation.x) * 3.0 * dt;
             } else {
+                // 非演示模式下的其他情况
                 if(STATE.mode === 'TREE') {
-                    // 在演示模式下，TREE模式保持缓慢旋转
                     STATE.rotation.y += 0.3 * dt;
                     STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
                 } else if (STATE.mode === 'SCATTER') {
-                    // SCATTER模式在演示模式下不旋转
-                    if (!STATE.demoMode) {
-                        STATE.rotation.y += 0.1 * dt;
-                    }
+                    // 非演示模式下，SCATTER模式没有手势时也稍微旋转
+                    STATE.rotation.y += 0.1 * dt;
                 }
             }
 
