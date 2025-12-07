@@ -271,8 +271,10 @@
         let demoBtn;
         let demoProgress;
         let demoInterval;
+        let demoAnimationFrame;
         let demoModeSwitchTime = 5000; // 5秒切换一次
-        let demoModeHandControlEnabled = true; // 手势控制是否启用
+        let demoModeStartTime = 0;
+        let demoModeCurrentMode = 'TREE';
 
         async function init() {
             initThree();
@@ -694,15 +696,11 @@
         }
         
         function startDemoMode() {
-            // 保存当前状态
-            STATE.demoModeOriginalHandState = demoModeHandControlEnabled;
-            
-            // 禁用手势控制
-            demoModeHandControlEnabled = false;
-            
             // 设置演示模式状态
             STATE.demoMode = true;
-            STATE.mode = 'TREE'; // 从 TREE 模式开始
+            demoModeStartTime = Date.now();
+            demoModeCurrentMode = 'TREE'; // 从 TREE 模式开始
+            STATE.mode = 'TREE'; // 立即切换到 TREE 模式
             
             // 更新按钮状态
             demoBtn.classList.add('active');
@@ -713,17 +711,15 @@
             
             // 清除焦点模式
             STATE.focusTarget = null;
+            STATE.focusIndex = -1;
             
             // 启动定时器切换模式
             startDemoTimer();
             
-            console.log('演示模式已启动');
+            console.log('演示模式已启动，初始模式：TREE');
         }
         
         function stopDemoMode() {
-            // 恢复手势控制
-            demoModeHandControlEnabled = STATE.demoModeOriginalHandState;
-            
             // 清除演示模式状态
             STATE.demoMode = false;
             
@@ -731,6 +727,12 @@
             if (demoInterval) {
                 clearInterval(demoInterval);
                 demoInterval = null;
+            }
+            
+            // 清除动画帧
+            if (demoAnimationFrame) {
+                cancelAnimationFrame(demoAnimationFrame);
+                demoAnimationFrame = null;
             }
             
             // 更新按钮状态
@@ -748,59 +750,94 @@
         }
         
         function startDemoTimer() {
-            let timeLeft = demoModeSwitchTime;
-            let lastUpdateTime = Date.now();
+            // 清除之前的定时器
+            if (demoInterval) {
+                clearInterval(demoInterval);
+            }
             
             // 重置进度条
             demoProgress.style.transform = 'scaleX(0)';
+            demoModeStartTime = Date.now();
             
             // 使用 requestAnimationFrame 创建平滑的进度条动画
             function updateProgress() {
                 if (!STATE.demoMode) return;
                 
                 const currentTime = Date.now();
-                const deltaTime = currentTime - lastUpdateTime;
-                timeLeft -= deltaTime;
-                lastUpdateTime = currentTime;
+                const elapsedTime = currentTime - demoModeStartTime;
+                const progress = (elapsedTime % demoModeSwitchTime) / demoModeSwitchTime;
                 
                 // 更新进度条
-                const progress = 1 - (timeLeft / demoModeSwitchTime);
                 demoProgress.style.transform = `scaleX(${progress})`;
                 
-                if (timeLeft <= 0) {
-                    // 切换模式
-                    switchDemoMode();
-                    timeLeft = demoModeSwitchTime;
-                    demoProgress.style.transform = 'scaleX(0)';
-                }
-                
-                requestAnimationFrame(updateProgress);
+                demoAnimationFrame = requestAnimationFrame(updateProgress);
             }
             
-            requestAnimationFrame(updateProgress);
+            // 启动进度条动画
+            demoAnimationFrame = requestAnimationFrame(updateProgress);
             
             // 设置模式切换定时器
-            demoInterval = setInterval(switchDemoMode, demoModeSwitchTime);
+            demoInterval = setInterval(() => {
+                if (!STATE.demoMode) return;
+                
+                // 在 TREE 和 SCATTER 模式之间切换
+                if (demoModeCurrentMode === 'TREE') {
+                    demoModeCurrentMode = 'SCATTER';
+                    STATE.mode = 'SCATTER';
+                    console.log('演示模式切换到：SCATTER');
+                } else {
+                    demoModeCurrentMode = 'TREE';
+                    STATE.mode = 'TREE';
+                    console.log('演示模式切换到：TREE');
+                }
+                
+                // 重置旋转速度
+                STATE.rotation.x = 0;
+                STATE.rotation.y = 0;
+                
+                // 重置开始时间
+                demoModeStartTime = Date.now();
+                
+            }, demoModeSwitchTime);
         }
         
-        function switchDemoMode() {
-            if (!STATE.demoMode) return;
-            
-            // 在 TREE 和 SCATTER 模式之间切换
-            if (STATE.mode === 'TREE') {
-                STATE.mode = 'SCATTER';
-                console.log('演示模式切换到：SCATTER');
-            } else if (STATE.mode === 'SCATTER') {
-                STATE.mode = 'TREE';
-                console.log('演示模式切换到：TREE');
+        // 修改手势处理函数，在演示模式下禁用手势
+        function processGestures(result) {
+            // 如果演示模式激活，忽略手势
+            if (STATE.demoMode) {
+                STATE.hand.detected = false;
+                return;
             }
             
-            // 确保焦点模式被清除
-            STATE.focusTarget = null;
-            
-            // 重置旋转速度
-            STATE.rotation.x = 0;
-            STATE.rotation.y = 0;
+            if (result.landmarks && result.landmarks.length > 0) {
+                STATE.hand.detected = true;
+                const lm = result.landmarks[0];
+                STATE.hand.x = (lm[9].x - 0.5) * 2; 
+                STATE.hand.y = (lm[9].y - 0.5) * 2;
+
+                const thumb = lm[4]; const index = lm[8]; const wrist = lm[0];
+                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+                const tips = [lm[8], lm[12], lm[16], lm[20]];
+                let avgDist = 0;
+                tips.forEach(t => avgDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
+                avgDist /= 4;
+
+                if (pinchDist < 0.05) {
+                    if (STATE.mode !== 'FOCUS') {
+                        STATE.mode = 'FOCUS';
+                        const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                        if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
+                    }
+                } else if (avgDist < 0.25) {
+                    STATE.mode = 'TREE';
+                    STATE.focusTarget = null;
+                } else if (avgDist > 0.4) {
+                    STATE.mode = 'SCATTER';
+                    STATE.focusTarget = null;
+                }
+            } else {
+                STATE.hand.detected = false;
+            }
         }
 
         // --- MEDIAPIPE ---
@@ -839,44 +876,6 @@
                 }
             }
             requestAnimationFrame(predictWebcam);
-        }
-
-        function processGestures(result) {
-            // 如果演示模式激活，忽略手势
-            if (STATE.demoMode) {
-                STATE.hand.detected = false;
-                return;
-            }
-            
-            if (result.landmarks && result.landmarks.length > 0) {
-                STATE.hand.detected = true;
-                const lm = result.landmarks[0];
-                STATE.hand.x = (lm[9].x - 0.5) * 2; 
-                STATE.hand.y = (lm[9].y - 0.5) * 2;
-
-                const thumb = lm[4]; const index = lm[8]; const wrist = lm[0];
-                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-                const tips = [lm[8], lm[12], lm[16], lm[20]];
-                let avgDist = 0;
-                tips.forEach(t => avgDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
-                avgDist /= 4;
-
-                if (pinchDist < 0.05) {
-                    if (STATE.mode !== 'FOCUS') {
-                        STATE.mode = 'FOCUS';
-                        const photos = particleSystem.filter(p => p.type === 'PHOTO');
-                        if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random()*photos.length)].mesh;
-                    }
-                } else if (avgDist < 0.25) {
-                    STATE.mode = 'TREE';
-                    STATE.focusTarget = null;
-                } else if (avgDist > 0.4) {
-                    STATE.mode = 'SCATTER';
-                    STATE.focusTarget = null;
-                }
-            } else {
-                STATE.hand.detected = false;
-            }
         }
 
         function setupEvents() {
@@ -941,7 +940,7 @@
                     // 在演示模式下，TREE模式保持缓慢旋转
                     STATE.rotation.y += 0.3 * dt;
                     STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
-                } else {
+                } else if (STATE.mode === 'SCATTER') {
                     // SCATTER模式在演示模式下不旋转
                     if (!STATE.demoMode) {
                         STATE.rotation.y += 0.1 * dt;
